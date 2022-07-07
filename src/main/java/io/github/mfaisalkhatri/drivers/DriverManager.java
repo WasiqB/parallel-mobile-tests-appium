@@ -7,19 +7,25 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.appium.java_client.AppiumDriver;
 import io.appium.java_client.MobileElement;
 
-import lombok.Builder;
 import lombok.SneakyThrows;
 import org.openqa.selenium.remote.DesiredCapabilities;
 
-@Builder
 public class DriverManager {
 
     private static final ThreadLocal<AppiumDriver<MobileElement>> DRIVER = new ThreadLocal<> ();
@@ -27,7 +33,6 @@ public class DriverManager {
     private static final String LT_USERNAME     = System.getenv ("username");
     private static final String LT_ACCESS_TOKEN = System.getenv ("token");
     private static final String GRID_URL        = "@mobile-hub.lambdatest.com/wd/hub";
-    private              int    capsIndex;
 
     @SneakyThrows
     public DriverManager createRemoteDriver () {
@@ -70,14 +75,34 @@ public class DriverManager {
             ObjectMapper objectMapper = new ObjectMapper ();
             JsonNode jsonNode = objectMapper.readValue (in, JsonNode.class);
 
-            JsonNode deviceInfoNode = jsonNode.get ("deviceAndBuildCaps")
-                .get (capsIndex);
+            //            JsonNode deviceInfoNode = jsonNode.findParent ("deviceNumber");
+            //
+            //
+            //            deviceInfoNode.fields ()
+            //                .forEachRemaining (entry -> {
+            //                    String fieldName = entry.getKey ();
+            //                    String fieldValue = entry.getValue ()
+            //                        .asText ();
+            //                    capabilities.setCapability (fieldName, fieldValue);
+            //                });
 
-            deviceInfoNode.fields ()
+            Stream<JsonNode> deviceInfoNode = Stream.of (jsonNode.get ("deviceAndBuildCaps"));
+
+            List<JsonNode> sortedDataNodes = deviceInfoNode.sorted (Comparator.comparing (o -> o.get ("deviceNumber")
+                    .asText ()))
+                .collect (Collectors.toList ());
+            ArrayNode arrayNode = objectMapper.createArrayNode ()
+                .addAll (sortedDataNodes);
+            ObjectNode node = objectMapper.createObjectNode ()
+                .set ("deviceAndBuildCaps", arrayNode);
+            node.remove ("deviceNumber");
+
+            node.fields ()
                 .forEachRemaining (entry -> {
                     String fieldName = entry.getKey ();
                     String fieldValue = entry.getValue ()
                         .asText ();
+                    System.out.println (fieldName + " " + fieldValue);
                     capabilities.setCapability (fieldName, fieldValue);
                 });
 
@@ -87,12 +112,13 @@ public class DriverManager {
                     String commonCapsfieldName = capsEntry.getKey ();
                     String commonCapsfieldValue = capsEntry.getValue ()
                         .asText ();
+                    System.out.println (commonCapsfieldName + " " + commonCapsfieldValue);
                     capabilities.setCapability (commonCapsfieldName, commonCapsfieldValue);
                 });
         } catch (FileNotFoundException e) {
-            e.printStackTrace ();
+            new Error ("File Not Found", e);
         } catch (IOException e) {
-            e.printStackTrace ();
+            new Error ("I/O Error", e);
         }
         return capabilities;
     }
